@@ -17,7 +17,11 @@
         "php": ">=5.4.0",
         "yiisoft/yii2": "~2.0.14",
         "yiisoft/yii2-bootstrap": "~2.0.0",
-        "yiisoft/yii2-swiftmailer": "~2.0.0 || ~2.1.0"
+        "yiisoft/yii2-swiftmailer": "~2.0.0 || ~2.1.0",
+        "yiisoft/yii2-twig": "~2.0.0",
+        "zircote/swagger-php": "~2",
+        "bower-asset/swagger-ui": "*",
+        "sizeg/yii2-jwt": "^1.2"
     },
     "require-dev": {
         "yiisoft/yii2-debug": "~2.1.0",
@@ -34,6 +38,13 @@
             "enabled": false
         }
     },
+    "scripts": {
+        "post-install-cmd": [
+            "php init --env=Development --overwrite=n",
+            "php yii cache/flush swagger"
+        ]
+    },
+    "prefer-stable": true,
     "repositories": [
         {
             "type": "composer",

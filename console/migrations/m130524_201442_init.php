@@ -4,7 +4,10 @@ use yii\db\Migration;
 
 class m130524_201442_init extends Migration
 {
-    public function up()
+    /**
+     * {@inheritdoc}
+     */
+    public function safeUp()
     {
         $tableOptions = null;
         if ($this->db->driverName === 'mysql') {
@@ -13,21 +16,38 @@ class m130524_201442_init extends Migration
         }
 
         $this->createTable('{{%user}}', [
-            'id' => $this->primaryKey(),
-            'username' => $this->string()->notNull()->unique(),
-            'auth_key' => $this->string(32)->notNull(),
-            'password_hash' => $this->string()->notNull(),
-            'password_reset_token' => $this->string()->unique(),
-            'email' => $this->string()->notNull()->unique(),
-
-            'status' => $this->smallInteger()->notNull()->defaultValue(10),
-            'created_at' => $this->integer()->notNull(),
-            'updated_at' => $this->integer()->notNull(),
+            'id'         => $this->primaryKey(),
+            'username'   => $this->string(32)->notNull()->unique(),
+            'auth_key'   => $this->string(32)->notNull()->unique(),
+            'status'     => $this->smallInteger()->notNull()->defaultValue(1),
+            'created_at' => $this->integer()->notNull()->comment('Когда добавлено'),
+            'created_by' => $this->integer()->notNull()->comment('Кем добавлено'),
+            'updated_at' => $this->integer()->comment('Кем обновлено'),
+            'updated_by' => $this->integer()->comment('Когда обновлено'),
         ], $tableOptions);
+
+        // Гостевая запись
+        $this->insert('{{%user}}', [
+            'username'   => 'guest',
+            'auth_key'   => Yii::$app->security->generateRandomString(),
+            'created_at' => time(),
+            'created_by' => \common\models\User::GUEST_ID
+        ]);
+
+        $this->createIndex('user_i01', '{{%user}}', 'status');
+
+        return true;
     }
 
-    public function down()
+    /**
+     * {@inheritdoc}
+     */
+    public function safeDown()
     {
+        $this->dropIndex('user_i01', '{{%user}}');
+
         $this->dropTable('{{%user}}');
+
+        return true;
     }
 }

@@ -1,50 +1,34 @@
 <?php
+
 namespace common\models;
 
+use common\behaviors\NextIdBehavior;
+use common\behaviors\UniqueHashBehavior;
+use common\models\base\BaseModel;
 use Yii;
-use yii\base\NotSupportedException;
-use yii\behaviors\TimestampBehavior;
-use yii\db\ActiveRecord;
+use yii\helpers\ArrayHelper;
 use yii\web\IdentityInterface;
 
 /**
  * User model
  *
- * @property integer $id
- * @property string $username
- * @property string $password_hash
- * @property string $password_reset_token
- * @property string $verification_token
- * @property string $email
- * @property string $auth_key
- * @property integer $status
- * @property integer $created_at
- * @property integer $updated_at
- * @property string $password write-only password
+ * @property string $username Уникальное имя пользователя в системе
+ * @property string $auth_key Уникальный ключ авторизации
+ *
+ * @author Dmitry E. Semenov <sde.tomsk@gmail.com>
+ * @copyright Self (c) 2019
  */
-class User extends ActiveRecord implements IdentityInterface
+class User extends BaseModel implements IdentityInterface
 {
-    const STATUS_DELETED = 0;
-    const STATUS_INACTIVE = 9;
-    const STATUS_ACTIVE = 10;
-
+    // Идентификатор гостевой учётнов записи
+    const GUEST_ID = 1;
 
     /**
      * {@inheritdoc}
      */
     public static function tableName()
     {
-        return '{{%user}}';
-    }
-
-    /**
-     * {@inheritdoc}
-     */
-    public function behaviors()
-    {
-        return [
-            TimestampBehavior::className(),
-        ];
+        return 'user';
     }
 
     /**
@@ -52,10 +36,49 @@ class User extends ActiveRecord implements IdentityInterface
      */
     public function rules()
     {
-        return [
-            ['status', 'default', 'value' => self::STATUS_INACTIVE],
-            ['status', 'in', 'range' => [self::STATUS_ACTIVE, self::STATUS_INACTIVE, self::STATUS_DELETED]],
-        ];
+        return ArrayHelper::merge(parent::rules(), [
+            [['username', 'auth_key'], 'string', 'max' => 32],
+            [['username', 'auth_key'], 'unique'],
+        ]);
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function attributeLabels()
+    {
+        return ArrayHelper::merge(parent::attributeLabels(), [
+            'username' => Yii::t('app', 'Уникальное имя пользователя'),
+            'auth_key' => Yii::t('app', 'Ключ авторизации')
+        ]);
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function behaviors()
+    {
+        return ArrayHelper::merge(parent::behaviors(), [
+            'HashBehavior' => [
+                'class'         => UniqueHashBehavior::class,
+                'hashAttribute' => 'auth_key',
+                'hashLength'    => 32
+            ],
+            'username'     => [
+                'class'         => UniqueHashBehavior::class,
+                'hashAttribute' => 'username',
+                'hashLength'    => 8
+            ],
+//            'NextIdBehavior' => [
+//                'class'       => NextIdBehavior::class,
+//                'idAttribute' => 'username',
+//                'tableSchema' => 'api-test',
+//                'tableName'   => 'user',
+//                'value'       => function () {
+//                    return 'id' . $this->nextId()';
+//                }
+//            ]
+        ]);
     }
 
     /**
@@ -63,7 +86,7 @@ class User extends ActiveRecord implements IdentityInterface
      */
     public static function findIdentity($id)
     {
-        return static::findOne(['id' => $id, 'status' => self::STATUS_ACTIVE]);
+        return static::findOne(['id' => $id]);
     }
 
     /**
@@ -71,7 +94,9 @@ class User extends ActiveRecord implements IdentityInterface
      */
     public static function findIdentityByAccessToken($token, $type = null)
     {
-        throw new NotSupportedException('"findIdentityByAccessToken" is not implemented.');
+        $token = (string)$token->getClaim('uid');
+
+        return static::findOne(['id' => $token]);
     }
 
     /**
@@ -82,55 +107,7 @@ class User extends ActiveRecord implements IdentityInterface
      */
     public static function findByUsername($username)
     {
-        return static::findOne(['username' => $username, 'status' => self::STATUS_ACTIVE]);
-    }
-
-    /**
-     * Finds user by password reset token
-     *
-     * @param string $token password reset token
-     * @return static|null
-     */
-    public static function findByPasswordResetToken($token)
-    {
-        if (!static::isPasswordResetTokenValid($token)) {
-            return null;
-        }
-
-        return static::findOne([
-            'password_reset_token' => $token,
-            'status' => self::STATUS_ACTIVE,
-        ]);
-    }
-
-    /**
-     * Finds user by verification email token
-     *
-     * @param string $token verify email token
-     * @return static|null
-     */
-    public static function findByVerificationToken($token) {
-        return static::findOne([
-            'verification_token' => $token,
-            'status' => self::STATUS_INACTIVE
-        ]);
-    }
-
-    /**
-     * Finds out if password reset token is valid
-     *
-     * @param string $token password reset token
-     * @return bool
-     */
-    public static function isPasswordResetTokenValid($token)
-    {
-        if (empty($token)) {
-            return false;
-        }
-
-        $timestamp = (int) substr($token, strrpos($token, '_') + 1);
-        $expire = Yii::$app->params['user.passwordResetTokenExpire'];
-        return $timestamp + $expire >= time();
+        return static::findOne(['username' => $username]);
     }
 
     /**
@@ -158,52 +135,15 @@ class User extends ActiveRecord implements IdentityInterface
     }
 
     /**
-     * Validates password
-     *
-     * @param string $password password to validate
-     * @return bool if password provided is valid for current user
+     * {@inheritdoc}
      */
-    public function validatePassword($password)
+    public function afterSave($insert, $changedAttributes)
     {
-        return Yii::$app->security->validatePassword($password, $this->password_hash);
-    }
+        parent::afterSave($insert, $changedAttributes);
 
-    /**
-     * Generates password hash from password and sets it to the model
-     *
-     * @param string $password
-     */
-    public function setPassword($password)
-    {
-        $this->password_hash = Yii::$app->security->generatePasswordHash($password);
-    }
-
-    /**
-     * Generates "remember me" authentication key
-     */
-    public function generateAuthKey()
-    {
-        $this->auth_key = Yii::$app->security->generateRandomString();
-    }
-
-    /**
-     * Generates new password reset token
-     */
-    public function generatePasswordResetToken()
-    {
-        $this->password_reset_token = Yii::$app->security->generateRandomString() . '_' . time();
-    }
-
-    public function generateEmailVerificationToken()
-    {
-        $this->verification_token = Yii::$app->security->generateRandomString() . '_' . time();
-    }
-
-    /**
-     * Removes password reset token
-     */
-    public function removePasswordResetToken()
-    {
-        $this->password_reset_token = null;
+        // @TODO - найти более оптимальное решение
+        $this->updateAttributes([
+            'username' => 'id' . $this->id
+        ]);
     }
 }
